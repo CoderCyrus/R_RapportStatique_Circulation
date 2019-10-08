@@ -1,0 +1,461 @@
+---
+title: "Rapport statistique sur les accidents corporels de la circulation"
+author: "Florine GIRAUD et Muruo WANG"
+date: "14 janvier 2019"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#on met row.names=NULL pour avoir la colonne avec les num?ros d'accidents partout
+
+lieux = read.csv("lieux-2017.csv",row.names =NULL)
+carac = read.csv("caracteristiques-2017.csv",row.names = NULL)
+usagers = read.csv("usagers-2017.csv",row.names = NULL)
+
+#FUSION DES 3 TABLES POUR FAIRE UNE TABLE ACCIDENT 
+new.table <- merge(carac,lieux, by="Num_Acc")
+accident <- merge(usagers,new.table,by="Num_Acc")
+attach(accident)
+```
+
+
+
+## INTRODUCTION
+
+Nous avons choisi d'?tudier la base de donn?es des accidents corporels de la circulations routi?re en 2017 disponible ici: https://www.data.gouv.fr/fr/datasets/base-de-donnees-accidents-corporels-de-la-circulation/
+
+L'?tude des accidents de la route peut aider ? am?liorer la pr?vention en mettant l'accent sur les facteurs les plus importants (port de la ceinture de s?curit?, prudence en cas de non-visibilit? ...)
+
+Un accident corporel de la circulation routi?re est un accident qui implique au moins une victime et au moins un v?hicule.
+
+Les usagers impliqu?s dans l'accident sont class?s dans diff?rentes cat?gories:
+? les personnes indemnes
+? les victimes : impliqu?es non indemnes.
+
+Parmi les victimes, on distingue :
+? les personnes tu?es : personnes qui d?c?dent du fait de l'accident, sur le coup ou dans les
+trente jours qui suivent l'accident.
+? les bless?s dits ? hospitalis?s ? : victimes hospitalis?es plus de 24 heures,
+? les bless?s l?gers : victimes ayant fait l'objet de soins m?dicaux mais n'ayant pas ?t? admises
+comme patients ? l'h?pital plus de 24 heures.
+
+Nous allons restreindre l'?tude au donn?es recueillis sur les usagers qui sont pr?sent?es ci-dessous:
+- Num_Acc : Identifiant de l'accident repris pour chacun des usagers
+d?crits impliqu?s dans l'accident
+- Num_Veh : Identifiant du v?hicule repris pour chacun des usagers occupant ce v?hicule (y compris les pi?tons qui sont
+rattach?s aux v?hicules qui les ont heurt?s) - Code alphanum?rique
+- place : Permet de situer la place occup?e dans le v?hicule par l'usager au moment de l'accident
+- Cat?gorie d'usager : 1 - Conducteur, 2 - Passager, 3 - Pi?ton, 4 - Pi?ton en roller ou en trottinette
+- grav : Gravit? de l'accident (1 - Indemne, 2 - Tu?, 3 - Bless? hospitalis?,4 - Bless? l?ger)
+- sexe : 1 - Masculin, 2 - F?minin
+- An_nais  : Ann?e de naissance de l'usager
+- trajet : 1 - Domicile - travail,2 - Domicile - ?cole,3 - Courses - achats,4 - Utilisation professionnelle,5 - Promenade - loisirs,9 - Autre
+
+La variable que nous allons ?tudier est la variable gravit? qui prends les valeurs suivantes:
+1-Indemne
+2-Tu?
+3-Bless? l?ger
+4-Bless? hospitalis?
+
+Le diagramme ci-dessous montre la r?partion de la gravit? des accidents de la route en 2017:
+
+```{r intro, echo=FALSE}
+
+Nom.gravite=c("Indemne","Tu?","Hospitalis?","Bless? l?ger")
+pie(table(grav),label=Nom.gravite,col=c("red","blue","green","yellow"))
+title(main = "R?partition de la gravit? des accident en 2017")
+```
+Pour notre ?tude, nous avons aussi cr??e une variable Vivant qui est dichotomique afin de pouvoir utilis? les mod?les th?oriques notamment le mod?le de regression logistique :
+
+```{r donnees, echo=TRUE}
+# GRAVITE = 2 -> VIVANT = 0 sinon VIVANT = 1
+accident$Vivant=as.numeric(!(accident$grav==2))
+```
+```{r invisible, include=FALSE}
+attach(accident)
+```
+
+##IMPORTATION DU JEU DE DONNEES
+
+Concernant l'importation de donn?e, nous n'avons pas eu de difficult? particuli?re, nous avons fusionn? les 3 tables qui nous paraissaient les plus int?ressantes (usager, lieux et caracteristique) en utilisant la colonne donnant le num?ro de l'accident Num_Acc qui est pr?sente dans les 3 tables. 
+
+
+## 1) IDENTIFICATION DES FACTEURS D'INFLUENCE
+## 1.1) INFLUENCE DE L'AGE
+
+Dans un premier temps, on veut regarder si l'?ge de la personne accident? influe sur son ?tat apr?s l'accident.
+
+On a cr?? un variable age qui indique l'?ge de la personne impliqu?e dans l'accident car on conna?t la date de naissance des personnes accident?es.
+
+```{r creationage, include=FALSE}
+accident$age=2017-accident$an_nais
+```
+
+```{r include=FALSE}
+attach(accident)
+```
+
+D'apr?s le graphique ci-dessous, les personnes tu?es sont en moyenne plus vieilles que celles qui survivent.
+
+```{r age, echo=FALSE}
+
+boxplot(age ~ grav, names=Nom.gravite)
+
+```
+
+Nous faisons le test du chi2 pour v?rifier que les variables grav et ?ge ne sont pas ind?pendantes:
+
+```{r testage, echo=FALSE}
+
+chisq.test(accident$grav,accident$age)
+
+```
+
+La p-valeur obtenue est tr?s faible (voir annexe 1) donc on peut en conclure que les variables ne sont pas ind?pendantes.
+
+## 1.2) INFLUENCE DU SEXE
+
+Nous regardons la r?partition des genres des personnes accident?es pour voir si le sexe peut influencer sur la gravit? d'un accident:
+```{r sexe, echo=FALSE}
+mosaicplot(table(grav,sexe),xlab="gravit?",ylab="sexe",color = TRUE, shade = TRUE)
+
+```
+
+Nous faisons le test du chi2 pour v?rifier que les variables grav et sexe ne sont pas ind?pendantes:
+
+```{r testsexe, echo=FALSE}
+
+chisq.test(accident$grav,accident$sexe)
+
+```
+
+La p-valeur obtenue est tr?s faible donc on peut en conclure que les variables ne sont pas ind?pendantes. Le sexe est un facteur qui influe sur la gravit? de l'accident.
+
+## 1.3) INFLUENCE DE LA CATEGORIE D'USAGER
+
+La table ?tudi? recense plusieurs cat?gories d'usagers("1-Conducteur","2-Passager","3-Pi?ton","4-Pi?ton en roller ou en trotinnette"), on veut regarder l'influence de cette caract?ritique sur la gravit? d'un accident:
+```{r categorie, echo=FALSE}
+mosaicplot(table(grav,catu),xlab="Gravit?",ylab=c("cat?gorie d'usager"),color = TRUE, shade = TRUE)
+
+```
+D'apr?s le graphique pr?c?dent, on voit que la proportion de pi?ton tu?s ou gravement bess?s est beaucoup plus importantes que celle des pi?tons indemnes.
+Nous faisons le test du chi2 pour v?rifier que les variables grav et catu ne sont pas ind?pendantes:
+
+```{r testcatu, echo=FALSE}
+
+chisq.test(accident$grav,accident$catu)
+
+```
+
+La p-valeur obtenue est tr?s faible donc on peut en conclure que les variables ne sont pas ind?pendantes.
+
+## 1.4) INFLUENCE DE L'USAGE D'UN DISPOSITIF DE SECURITE
+
+On cr?e un variable port_secu qui indique si l'usager portait un dispositif de s?curit? (ceinture, casque...) lors de l'accident:
+
+```{r portsecu, echo=TRUE}
+
+accident$port.secu=accident$secu%%10
+save.port.secu=accident$port.secu
+save.age=accident$age
+
+```
+1-Oui
+2-Non
+3-Ne sait pas 
+```{r portsecuinvisible, include=FALSE}
+attach(accident)
+```
+
+```{r secu, echo=FALSE}
+mosaicplot(table(grav,port.secu),xlab="Gravit?",ylab="Port d'un dispositif de s?curit?",color = TRUE, shade = TRUE)
+```
+
+Nous faisons le test du chi2 pour v?rifier que les variables grav et port_secu ne sont pas ind?pendantes:
+
+```{r testsecu, echo=FALSE}
+
+chisq.test(accident$grav,accident$port.secu)
+
+```
+
+La p-valeur obtenue est tr?s faible donc on peut en conclure que les variables ne sont pas ind?pendantes.
+
+## 2) REGRESSION LOGISTIQUE
+
+Dans un premier temps, nous n'avons utilis? que les variables contenues dans la table usager pour faire la r?gression logistique de la variable Vivant.
+
+```{r nettoyage table, include=FALSE}
+indice.supprime=(!is.na(accident$place)) & (!is.na(accident$catu)) & (!is.na(accident$sexe)) & (!is.na(accident$trajet)) & (!is.na(accident$port.secu)) &(!is.na(accident$port.secu))&(!is.na(accident$larrout)) &(!is.na(accident$hrmn)) &(!is.na(accident$jour))&(!is.na(accident$mois))&(!is.na(accident$atm))&(!is.na(accident$agg))&(!is.na(accident$lum))&(!is.na(accident$dep))&(!is.na(accident$com))&(!is.na(accident$int))&(!is.na(accident$catr))&(!is.na(accident$catr))&(!is.na(accident$circ))&(!is.na(accident$nbv))&(!is.na(accident$vosp))&(!is.na(accident$prof))&(!is.na(accident$plan))&(!is.na(accident$surf))&(!is.na(accident$infra))&(!is.na(accident$env1))&(!is.na(accident$age))
+
+accident <-accident[indice.supprime,]##SUPPRESSION DES LIGNES VIDES
+
+##TABLE CARACTERISTIQUE
+accident$jour<-as.factor(accident$jour)
+accident$mois<-as.factor(accident$mois)
+accident$lum<-as.factor(accident$lum)
+accident$agg<-as.factor(accident$agg)
+accident$atm<-as.factor(accident$atm)
+accident$int<-as.factor(accident$int)
+
+accident$dep<-as.factor(accident$dep)
+accident$com<-as.factor(accident$com)
+
+##TABLE LIEUX
+accident$catr<-as.factor(accident$catr)
+accident$circ<-as.factor(accident$circ)
+accident$vosp<-as.factor(accident$vosp)
+accident$prof<-as.factor(accident$prof)
+accident$plan<-as.factor(accident$plan)
+accident$surf<-as.factor(accident$surf)
+accident$infra<-as.factor(accident$infra)
+accident$env1<-as.factor(accident$env1)
+
+##TABLE USAGER
+#accident$place <- as.factor(accident$place)-> on retire pas assez g?n?ral
+accident$catu<-as.factor(accident$catu)
+accident$Vivant <-as.factor(accident$Vivant)
+accident$sexe <-as.factor(accident$sexe)
+accident$trajet  <-as.factor(accident$trajet )
+accident$port.secu  <-as.factor(accident$port.secu)
+
+attach(accident)
+
+```
+
+
+## 2.1) REGRESSION PAR L'AGE  
+
+```{r regage, include=FALSE}
+#I<-which(accident$age >95)
+#accident <- accident[-I,]
+
+#accident$Vivant <-as.factor(accident$Vivant)
+modele_age1 <- glm(Vivant ~ age, family=binomial(link='logit'))
+summary(modele_age1)
+coefficients(modele_age1)
+confint(modele_age1)
+
+#TEST DE WALD
+#library(aod)
+#x<-wald.test (b=coef(modele_age1), Sigma =  vcov(modele_age1), Terms = 2)
+
+#on obtient pas toute ? fait la m?me chose car on a enlev? les lignes vides avant
+
+```
+```{r age view, echo=FALSE}
+age_values=seq(0,101,1)
+data_to_predict <- data.frame(age = age_values)
+Logodds  <- predict(modele_age1, newdata = data_to_predict)
+plot(age_values,Logodds)
+
+proba.post  <- predict(modele_age1, 
+                       newdata = data_to_predict,
+                       type = "response" )
+
+
+#TRACE DES POINTS REELS
+n_i=tapply(X=as.numeric(Vivant), INDEX=age, FUN=sum)#nombre de vivant par ?ge
+n=tapply(X=as.numeric(Vivant),INDEX=age, FUN=length)#nombre d'accident par ?ge
+p=(n_i/n)-1 #proportion d'indemne par ?ge/-1 mis parce que j'avais des valeurs ?gales ? 2
+
+plot(p)
+lines(age_values,proba.post ,col = "red")
+```
+
+##2.2) REGRESSION PAR L'AGE ET LE SEXE
+```{r regage2, echo=FALSE}
+
+modele_age2 <-glm(Vivant ~ age + sexe, family=binomial(link='logit'))
+##confint.default(modele_age2)
+age_values= seq (0,120,1)
+data_to_predict1 <- data.frame(age =  age_values ,
+                              sexe = "1")
+data_to_predict2 <- data.frame(age =  age_values , sexe = "2")
+
+mypred1 <- predict(modele_age2, newdata = data_to_predict1 ,
+                   type = "response")
+mypred2 <- predict(modele_age2, newdata = data_to_predict2 ,
+                   type = "response")
+
+#TRACE DES POINTS REELS
+
+plot(age_values,mypred1,col = "red",type ="l",ylim= c(0.8,1),  xlab = "?ge",ylab = "pi")
+lines(age_values,mypred2,col = "blue")
+
+legend(legend = c("Homme","Femme"),
+       lty =rep(1,2) ,col=c("blue","red"),x = "bottomleft")
+
+
+
+```
+
+##TEST DE L'EFFET DE LA VARIABLE SEXE
+
+```{r waldsexe, echo=FALSE}
+library(aod)
+wald.test (b=coef(modele_age2), Sigma =  vcov(modele_age2), Terms = 3)
+```
+
+La p-value est tr?s faible, il y a un effet significatif de sexe sur Vivant.
+
+## 2.3) MODELE COMPLET AVEC LES VARIABLES DE LA TABLE USAGER
+
+On cr?e maintenant un mod?le de r?gression logistique avec toutes les variables utilisables de la table usager (voir annexe 2).
+
+Ensuite, on utilise un algorithme de type backward pour garder les variables utiles au mod?le qui s'av?rent ici ?tre: sexe, age, trajet, port.secu (voir annexe 3)
+
+```{r complet usager, include=FALSE}
+
+modele_complet1 <-glm(Vivant ~ sexe + age + trajet + port.secu + catu ,family=binomial(link='logit'))
+summary(modele_complet1)
+confint.default(modele_complet1)
+backwards = (step(modele_complet1, print=TRUE))
+
+```
+##QUALITE DU MODELE
+
+```{r modeleajuste1}
+modele_ajuste1 <-glm(Vivant ~ sexe + age + trajet + port.secu ,family=binomial(link='logit'))
+
+library(pROC)
+pred = predict(modele_complet1, newdata = accident,
+               type=c("response")) 
+pred2 = predict(modele_ajuste1, newdata = accident,
+               type=c("response")) 
+pred3=predict(modele_age1, newdata = accident,type=c("response"))
+pred4=predict(modele_age2, newdata = accident, type=c("response"))
+g <- roc(Vivant,pred)
+g2 <- roc(Vivant,pred2)
+g3<-roc(Vivant,pred3)
+g4<-roc(Vivant,pred4)
+plot(g,col="red")
+par(new=TRUE)
+plot(g2,col="green")
+par(new=TRUE)
+plot(g3,col="blue")
+par(new=TRUE)
+plot(g4,col="yellow")
+legend(legend = c("mod?le avec ?ge","mod?le avec ?ge et sexe", "mod?le complet (usager)", "mod?le ajust? (usager)"),
+       lty =rep(1,4) ,col=c("blue","yellow","red","green"),x = "bottomleft")
+```
+
+La mod?le n'est pas tr?s performant, on va essayer de l'am?liorer en ajoutant des donn?es concernant les lieux des accidents (table LIEUX) et les caract?ristiques (humidit? du sol, largeur de la route, date, heure de la journ?e...)
+
+## 2.3) MODELE COMPLET AVEC LES VARIABLES DE LA TABLE USAGER, CARACTERISTIQUE, LIEUX
+
+On cr?e maintenant un mod?le de r?gression logistique avec toutes les variables utilisables des tables usager, caracteristique et lieux (voir annexe 4).
+
+Ensuite, on utilise un algorithme de type backward pour garder les variables utiles au mod?le (voir annexe 5).
+
+```{r complet, include=FALSE}
+
+
+
+
+
+
+modele_complet2 <-glm(Vivant ~  sexe + age + trajet + port.secu +catu + larrout +hrmn + mois +lum+atm+agg+int + catr+surf+plan+infra ,family=binomial(link='logit'))
+##j'ai enlev? dep car c'est trop long jour aussi(beaucoup de modalit?s)-env1 place + catu+ infra + prof  + vosp+
+#+ hrmn  + mois + lum +atm + agg+ int + catr + circ +plan + surf
+summary(modele_complet2)
+confint.default(modele_complet2)
+backwards = (step(modele_complet2, print=TRUE))
+
+
+```
+
+```{r modeleaajust?, include=FALSE}
+modele_ajuste2 <-glm(Vivant ~ sexe + age + trajet + port.secu + catu + larrout + hrmn + 
+    lum + agg + int + catr + surf + plan + infra
+,family=binomial(link='logit'))
+summary(modele_ajuste2)
+confint.default(modele_ajuste2)
+
+
+```
+
+```{r   Random Tree}
+library(randomForest)
+set.seed(200)
+fit <- randomForest(Vivant ~ hrmn +mois + age + larrout + trajet ,
+                      data=accident, 
+                      importance=TRUE, 
+                      ntree=20)
+
+varImpPlot(fit)
+print(fit)
+
+```
+
+##QUALITE DU MODELE
+```{r prediction, echo=TRUE}
+library(pROC)
+pred = predict(modele_ajuste1, newdata = accident,
+               type=c("response")) 
+pred2 = predict(modele_ajuste2, newdata = accident,
+               type=c("response")) 
+g <- roc(Vivant,pred)
+g2 <- roc(Vivant,pred2)
+plot(g,col="red")
+par(new=TRUE)
+plot(g2,col="green")
+par(new=TRUE)
+legend(legend = c("mod?le ajust? (usager)","mod?le ajust? (usager, lieux, caract?ristiques)"),
+       lty =rep(1,2) ,col=c("red","green"),x = "bottomright")
+```
+
+```{r erreur}
+lambda = 0.5
+n = 5
+Error = rep(1,n)
+c=0
+Error_moyenne=0
+for (i in 1:n){
+  data_i = accident[-i,]
+  model_i = glm(Vivant ~ place + catu + sexe + age + trajet + port.secu,data = data_i, family=binomial(link='logit'))
+  pred_i = predict(model_i,accident[i,],type=c("response")) 
+  Error[i] = abs(as.numeric(Vivant[i]) - (pred_i > lambda) )
+ if (!is.na(Error[i]))
+ {
+  c=c+1
+  Error_moyenne=(c*Error_moyenne+Error[i])/(c+1)
+  print(Error[i])
+}
+    
+}
+print(Error_moyenne)
+
+```
+
+## 3) CLUSTERING
+
+```{r clustering, echo=TRUE}
+features=subset(usagers,select=-c(Num_Acc,num_veh,grav,secu,locp,actp,etatp,an_nais))
+features$port.secu=save.port.secu
+features$age=save.age
+
+attach(features)
+
+indice.supprime=(!is.na(features$place)) & (!is.na(features$catu)) & (!is.na(features$sexe)) & (!is.na(features$trajet)) & (!is.na(features$port.secu)) & (!is.na(features$age))
+features <-features[indice.supprime,]
+nbClasses = 4
+fit <- kmeans(scale(features),nbClasses)
+
+```
+
+
+
+```{r resultatclustering, echo=FALSE}
+tab.num <- accident$Num_Acc[indice.supprime]
+tab.grav <- accident$grav[indice.supprime]
+tab.age <-accident$age[indice.supprime]
+tab.sexe <-accident$sexe[indice.supprime]
+plot(tab.age, tab.grav,col=fit$cluster)
+plot(tab.num,tab.sexe, col=fit$cluster)
+```
+
